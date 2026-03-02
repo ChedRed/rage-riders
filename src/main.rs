@@ -136,5 +136,8 @@ fn main() {
     events.set_control_flow(ControlFlow::Poll);
     
     let mut app = App::default();
-    let result = events.run_app(&mut app);
+    match events.run_app(&mut app) {
+        Ok(()) => println!("A-OK!"),
+        Err(error) => eprintln!("Error: {error:?}"),
+    }
 }
