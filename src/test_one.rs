@@ -1,3 +1,3 @@
-pub fn fun() -> String {
-    String::from("one!")
+pub fn fun(end: &str) -> String {
+    String::from("one") + end
 }

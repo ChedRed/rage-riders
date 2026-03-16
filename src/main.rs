@@ -2,46 +2,271 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
+
 pub mod test_one;
 pub mod test_two;
 
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 2],
+    color: [f32; 4],
+}
+
+impl Vertex {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+            ]
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Location {
+    position: [f32; 2],
+    rotation: [f32; 2],
+}
+
+impl Location {
+    fn new() -> Self {
+        Self {
+            position: [0., 0.],
+            rotation: [0., 0.],
+        }
+    }
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Location>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+            ]
+        }
+    }
+}
+
+
+const MAP_VERTICES: &[Vertex] = &[ 
+    Vertex { position: [-5., -5.], color: [0.1, 0.1, 0.1, 1.] },
+    Vertex { position: [10., -5.], color: [0.1, 0.1, 0.1, 1.] },
+    Vertex { position: [-5., 10.], color: [0.1, 0.1, 0.1, 1.] },
+    Vertex { position: [10., 10.], color: [0.1, 0.1, 0.1, 1.] },
+    Vertex { position: [0., 0.], color: [0.4, 0.4, 0.4, 1.] },
+    Vertex { position: [0., 10.], color: [0.4, 0.4, 0.4, 1.] },
+    Vertex { position: [10., 0.], color: [0.4, 0.4, 0.4, 1.] },
+    Vertex { position: [10., 10.], color: [0.4, 0.4, 0.4, 1.] },
+];
+
+const MAP_INDICES: &[u16] = &[
+    0, 1, 2, 3, 3, 4, 4, 5, 6, 7,
+];
+
+const CAR_BODY_VERTICES: &[Vertex] = &[
+    Vertex { position: [0., 0.], color: [0.1, 0., 0., 1.] },
+    Vertex { position: [1., 0.], color: [0.1, 0., 0., 1.] },
+    Vertex { position: [0., 2.], color: [1., 0., 0., 1.] },
+    Vertex { position: [1., 2.], color: [1., 0., 0., 1.] },
+];
+
+const CAR_BODY_INDICES: &[u16] = &[
+    0, 1, 2, 3,
+];
+
+
 struct State {
-    window: Arc<Window>,
+    surface: wgpu::Surface<'static>,
+    surface_format: wgpu::TextureFormat,
     device: wgpu::Device,
     queue: wgpu::Queue,
     size: winit::dpi::PhysicalSize<u32>,
-    surface: wgpu::Surface<'static>,
-    surface_format: wgpu::TextureFormat,
+    render_pipeline: wgpu::RenderPipeline,
+    car_vertex_buffer: wgpu::Buffer,
+    car_index_buffer: wgpu::Buffer,
+    car_location: Vec<Location>,
+    car_location_buffer: wgpu::Buffer,
+    map_vertex_buffer: wgpu::Buffer,
+    map_index_buffer: wgpu::Buffer,
+    map_location: Vec<Location>,
+    map_location_buffer: wgpu::Buffer,
+    // location_bind_group: wgpu::BindGroup,
+    num_map_indices: u32,
+    num_car_indices: u32,
+    window: Arc<Window>,
 }
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .unwrap();
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .unwrap();
-
+        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions::default()).await.unwrap();
+        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default()).await.unwrap();
+        
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
         let cap = surface.get_capabilities(&adapter);
         let surface_format = cap.formats[0];
-
+        
+        
+        let raster_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/main.wgsl").into());
+        
+        let car_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Car Vertex Buffer"),
+            contents: bytemuck::cast_slice(CAR_BODY_VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        
+        let car_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Car Index Buffer"),
+            contents: bytemuck::cast_slice(CAR_BODY_INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        
+        let map_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Map Vertex Buffer"),
+            contents: bytemuck::cast_slice(MAP_VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        
+        let map_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Map Index Buffer"),
+            contents: bytemuck::cast_slice(MAP_INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        
+        
+        let mut car_location: Vec<Location> = Vec::new();
+        
+        car_location.push(Location::new());
+        car_location[0].position = [10., 0.];
+        
+        let mut map_location: Vec<Location> = Vec::new();
+        
+        map_location.push(Location::new());
+        map_location[0].position = [0., 0.];
+        
+        let car_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Car Locations Buffer"),
+            contents: bytemuck::cast_slice(&car_location),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        
+        let map_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Map Location Buffer"),
+            contents: bytemuck::cast_slice(&map_location),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        
+        // let location_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        //     label: Some("Location Bind Group Layout"),
+        //     entries: &[
+        //         wgpu::BindGroupLayoutEntry {
+        //             binding: 0,
+        //             visibility: wgpu::ShaderStages::VERTEX,
+        //             ty: wgpu::BindingType::Buffer {
+        //                 ty: wgpu::BufferBindingType::Uniform,
+        //                 has_dynamic_offset: false,
+        //                 min_binding_size: None,
+        //             },
+        //             count: None,
+        //         }
+        //     ],
+        // });
+        
+        // let location_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     label: Some("Location Bind Group"),
+        //     layout: &location_bind_layout,
+        //     entries: &[
+        //         wgpu::BindGroupEntry {
+        //             binding: 0,
+        //             resource: location_buffer.as_entire_binding(),
+        //         }
+        //     ],
+        // });
+        
+        
+        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Layout for Primary Render Pipeline"),
+            bind_group_layouts: &[],
+            immediate_size: 0,
+        });
+        
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Primary Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &raster_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[
+                    Vertex::desc(),
+                    Location::desc(),
+                ],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &raster_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                // cull_mode: Some(wgpu::Face::Front),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview_mask: None,
+            cache: None,
+        });
+        
+        let num_map_indices = MAP_INDICES.len() as u32;
+        let num_car_indices = CAR_BODY_INDICES.len() as u32;
+        
         let state = State {
-            window,
-            device,
-            queue,
-            size,
-            surface,
-            surface_format,
+            surface, surface_format, device, queue, size, render_pipeline, car_vertex_buffer, car_index_buffer, car_location, car_location_buffer, map_vertex_buffer, map_index_buffer, map_location, map_location_buffer, num_map_indices, num_car_indices, window,
         };
 
         state.configure_surface();
@@ -85,8 +310,8 @@ impl State {
             });
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        let renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
+        let mut renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &texture_view,
                 depth_slice: None,
@@ -101,8 +326,20 @@ impl State {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-
+        
+        renderpass.set_pipeline(&self.render_pipeline);
+        // renderpass.set_bind_group(0, &self.location_bind_group, &[]);
+        renderpass.set_vertex_buffer(0, self.map_vertex_buffer.slice(..));
+        renderpass.set_vertex_buffer(1, self.map_location_buffer.slice(..));
+        renderpass.set_index_buffer(self.map_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        renderpass.draw_indexed(0..self.num_map_indices, 0, 0..self.map_location.len() as _);
+        
+        renderpass.set_vertex_buffer(0, self.car_vertex_buffer.slice(..));
+        renderpass.set_vertex_buffer(1, self.car_location_buffer.slice(..));
+        renderpass.set_index_buffer(self.car_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        renderpass.draw_indexed(0..self.num_car_indices, 0, 0..self.car_location.len() as _);
         drop(renderpass);
+        
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         surface_texture.present();
@@ -149,6 +386,8 @@ impl ApplicationHandler for App {
 }
 
 fn main() {
+    println!("One: {}\nTwo: {}", test_one::fun("!"), test_two::ny());
+    
     let events = EventLoop::new().unwrap();
     events.set_control_flow(ControlFlow::Poll);
 
