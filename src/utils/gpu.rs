@@ -1,5 +1,8 @@
+use assert_json_diff::assert_json_include;
+use serde_json::json;
+
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug, serde::Deserialize, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     pub position: [f32; 2],
     pub color: [f32; 4],
@@ -59,3 +62,30 @@ impl Location {
         }
     }
 }
+
+macro_rules! include_object {
+    ($path:expr) => {{
+        let vectors = include_bytes!("vectors/data_schema.json");
+    }};
+}
+
+macro_rules! include_vectors {
+    ($path:expr) => {{
+        let vectors = include_str!($path);
+        let schema = include_str!("vectors/data_schema.json");
+        
+        let vector_json: serde_json::Value = serde_json::from_str(vectors).unwrap();
+        let json_schema: serde_json::Value = serde_json::from_str(schema).unwrap();
+        
+        assert_json_diff::assert_json_include!(actual: vector_json, expected: json_schema);
+        
+        let vertices: Vec<Vertex> = serde_json::from_value(vector_json["vertices"].clone()).unwrap();
+        let indices: Vec<u32> = serde_json::from_value(vector_json["indices"].clone()).unwrap();
+        
+        let box_vertices: Box<[Vertex]> = vertices.into_boxed_slice();
+        let box_indices: Box<[u32]> = indices.into_boxed_slice();
+        
+        (box_vertices, indices)
+    }};
+}
+pub(crate) use include_vectors;

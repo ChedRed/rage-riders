@@ -13,64 +13,6 @@ use utils::gpu::{Vertex, Location};
 
 pub mod game;
 
-const MAP_VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [-5., -5.],
-        color: [0.1, 0.1, 0.1, 1.],
-    },
-    Vertex {
-        position: [10., -5.],
-        color: [0.1, 0.1, 0.1, 1.],
-    },
-    Vertex {
-        position: [-5., 10.],
-        color: [0.1, 0.1, 0.1, 1.],
-    },
-    Vertex {
-        position: [10., 10.],
-        color: [0.1, 0.1, 0.1, 1.],
-    },
-    Vertex {
-        position: [0., 0.],
-        color: [0.4, 0.4, 0.4, 1.],
-    },
-    Vertex {
-        position: [0., 10.],
-        color: [0.4, 0.4, 0.4, 1.],
-    },
-    Vertex {
-        position: [10., 0.],
-        color: [0.4, 0.4, 0.4, 1.],
-    },
-    Vertex {
-        position: [10., 10.],
-        color: [0.4, 0.4, 0.4, 1.],
-    },
-];
-
-const MAP_INDICES: &[u16] = &[0, 1, 2, 3, 3, 4, 4, 5, 6, 7];
-
-const CAR_BODY_VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [0., 0.],
-        color: [0.1, 0., 0., 1.],
-    },
-    Vertex {
-        position: [1., 0.],
-        color: [0.1, 0., 0., 1.],
-    },
-    Vertex {
-        position: [0., 2.],
-        color: [1., 0., 0., 1.],
-    },
-    Vertex {
-        position: [1., 2.],
-        color: [1., 0., 0., 1.],
-    },
-];
-
-const CAR_BODY_INDICES: &[u16] = &[0, 1, 2, 3];
-
 struct State {
     surface: wgpu::Surface<'static>,
     surface_format: wgpu::TextureFormat,
