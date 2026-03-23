@@ -11,6 +11,8 @@ use winit::window::{Window, WindowId};
 pub mod utils;
 use utils::gpu::{Vertex, Location};
 
+use crate::game::Game;
+
 pub mod game;
 
 struct State {
@@ -20,17 +22,8 @@ struct State {
     queue: wgpu::Queue,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    car_vertex_buffer: wgpu::Buffer,
-    car_index_buffer: wgpu::Buffer,
-    car_location: Vec<Location>,
-    car_location_buffer: wgpu::Buffer,
-    map_vertex_buffer: wgpu::Buffer,
-    map_index_buffer: wgpu::Buffer,
-    map_location: Vec<Location>,
-    map_location_buffer: wgpu::Buffer,
+    content: game::Game,
     // location_bind_group: wgpu::BindGroup,
-    num_map_indices: u32,
-    num_car_indices: u32,
     window: Arc<Window>,
 }
 
@@ -45,6 +38,8 @@ impl State {
             .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .unwrap();
+        
+        let content: game::Game = Game::create(&device);
 
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
@@ -54,51 +49,51 @@ impl State {
         let raster_shader =
             device.create_shader_module(wgpu::include_wgsl!("shaders/main.wgsl").into());
 
-        let car_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Car Vertex Buffer"),
-            contents: bytemuck::cast_slice(CAR_BODY_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        // let car_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Car Vertex Buffer"),
+        //     contents: bytemuck::cast_slice(CAR_BODY_VERTICES),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
 
-        let car_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Car Index Buffer"),
-            contents: bytemuck::cast_slice(CAR_BODY_INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        // let car_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Car Index Buffer"),
+        //     contents: bytemuck::cast_slice(CAR_BODY_INDICES),
+        //     usage: wgpu::BufferUsages::INDEX,
+        // });
 
-        let map_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Map Vertex Buffer"),
-            contents: bytemuck::cast_slice(MAP_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        // let map_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Map Vertex Buffer"),
+        //     contents: bytemuck::cast_slice(MAP_VERTICES),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
 
-        let map_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Map Index Buffer"),
-            contents: bytemuck::cast_slice(MAP_INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        // let map_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Map Index Buffer"),
+        //     contents: bytemuck::cast_slice(MAP_INDICES),
+        //     usage: wgpu::BufferUsages::INDEX,
+        // });
 
-        let mut car_location: Vec<Location> = Vec::new();
+        // let mut car_location: Vec<Location> = Vec::new();
 
-        car_location.push(Location::new());
-        car_location[0].position = [10., 0.];
+        // car_location.push(Location::new());
+        // car_location[0].position = [10., 0.];
 
-        let mut map_location: Vec<Location> = Vec::new();
+        // let mut map_location: Vec<Location> = Vec::new();
 
-        map_location.push(Location::new());
-        map_location[0].position = [0., 0.];
+        // map_location.push(Location::new());
+        // map_location[0].position = [0., 0.];
 
-        let car_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Car Locations Buffer"),
-            contents: bytemuck::cast_slice(&car_location),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        // let car_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Car Locations Buffer"),
+        //     contents: bytemuck::cast_slice(&car_location),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
 
-        let map_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Map Location Buffer"),
-            contents: bytemuck::cast_slice(&map_location),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        // let map_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Map Location Buffer"),
+        //     contents: bytemuck::cast_slice(&map_location),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
 
         // let location_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         //     label: Some("Location Bind Group Layout"),
@@ -175,8 +170,8 @@ impl State {
             cache: None,
         });
 
-        let num_map_indices = MAP_INDICES.len() as u32;
-        let num_car_indices = CAR_BODY_INDICES.len() as u32;
+        // let num_map_indices = MAP_INDICES.len() as u32;
+        // let num_car_indices = CAR_BODY_INDICES.len() as u32;
 
         let state = State {
             surface,
@@ -185,16 +180,7 @@ impl State {
             queue,
             size,
             render_pipeline,
-            car_vertex_buffer,
-            car_index_buffer,
-            car_location,
-            car_location_buffer,
-            map_vertex_buffer,
-            map_index_buffer,
-            map_location,
-            map_location_buffer,
-            num_map_indices,
-            num_car_indices,
+            content,
             window,
         };
 
@@ -258,17 +244,10 @@ impl State {
 
         renderpass.set_pipeline(&self.render_pipeline);
         // renderpass.set_bind_group(0, &self.location_bind_group, &[]);
-        renderpass.set_vertex_buffer(0, self.map_vertex_buffer.slice(..));
-        renderpass.set_vertex_buffer(1, self.map_location_buffer.slice(..));
-        renderpass.set_index_buffer(self.map_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        renderpass.draw_indexed(0..self.num_map_indices, 0, 0..self.map_location.len() as _);
 
-        renderpass.set_vertex_buffer(0, self.car_vertex_buffer.slice(..));
-        renderpass.set_vertex_buffer(1, self.car_location_buffer.slice(..));
-        renderpass.set_index_buffer(self.car_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        renderpass.draw_indexed(0..self.num_car_indices, 0, 0..self.car_location.len() as _);
+        self.content.render_objects(&mut renderpass);
+        
         drop(renderpass);
-
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         surface_texture.present();

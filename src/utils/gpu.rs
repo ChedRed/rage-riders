@@ -85,7 +85,7 @@ macro_rules! include_vectors {
         let box_vertices: Box<[Vertex]> = vertices.into_boxed_slice();
         let box_indices: Box<[u32]> = indices.into_boxed_slice();
         
-        (box_vertices, indices)
+        (box_vertices, box_indices)
     }};
 }
 pub(crate) use include_vectors;

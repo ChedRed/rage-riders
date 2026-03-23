@@ -1,4 +1,4 @@
-use crate::utils::gpu::{Vertex, Location};
+use crate::utils::gpu::Vertex;
 
 pub struct Map {
     pub position: [f32; 2],
