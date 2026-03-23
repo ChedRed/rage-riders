@@ -5,9 +5,15 @@ use crate::utils::gpu::{Vertex, Location, include_vectors};
 use maps::map::Map;
 use vehicles::car::Car;
 use wgpu::util::DeviceExt;
+use std::cmp::max;
 
 pub struct Game {
-    pub viewport: [f32; 4],
+    pub viewscale: Box<[f32]>, // width and height
+    pub viewscale_buffer: wgpu::Buffer,
+    pub viewport: Box<[f32]>, // X, Y, rotation, and padding
+    pub viewport_buffer: wgpu::Buffer,
+    pub view_bind_group: wgpu::BindGroup,
+    
     pub current_map: Map,
     pub current_map_location: Location,
     pub current_map_vertex_buffer: wgpu::Buffer,
@@ -59,7 +65,6 @@ impl Game {
         
         let map_indices: Box<[u32]> = vec![0, 1, 2, 3, 3, 4, 4, 5, 6, 7].into_boxed_slice();
     
-        println!("Got this far :)");
         // let (map_vertices, map_indices) = include_vectors!("vectors/map_0.json");
         
         let map_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -128,9 +133,57 @@ impl Game {
             usage: wgpu::BufferUsages::VERTEX,
         })];        
         
+        let new_viewscale: Box<[f32]> = vec![0., 0.].into_boxed_slice();
+        let new_viewport: Box<[f32]> = vec![0., 0., 0., 0.].into_boxed_slice();
+        
+        let new_view_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Viewport Buffer"),
+            contents: bytemuck::cast_slice(&new_viewport),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        
+        let new_viewport_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Viewport Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+        });
+
+        let new_view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Viewport Bind Group"),
+            layout: &new_viewport_bind_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: new_view_buffer.as_entire_binding(),
+                },
+            ],
+        });
         
         Self {
-            viewport: [0., 0., 0., 0.],
+            viewscale: new_viewscale,
+            viewport: new_viewport,
+            view_buffer: new_view_buffer,
+            view_bind_group: new_view_bind_group,
             current_map: map,
             current_map_location: map_location,
             current_map_vertex_buffer: map_vertex_buffer,
@@ -144,15 +197,11 @@ impl Game {
         }
     }
     
-    pub fn resize_viewport(&mut self, window_size: &[f32; 2]) {
-        self.viewport[0] = window_size[0];
-        self.viewport[1] = window_size[1];
+    pub fn resize_viewport(&mut self, window_size: &[u32; 2]) {
+        let max: f32 = max(window_size[0], window_size[1]) as f32;
         
-        if window_size[1] > window_size[0] {
-            self.viewport[0] = window_size[1];
-        } else {
-            self.viewport[1] = window_size[0];
-        }
+        self.viewscale[0] = window_size[0] as f32 / max;
+        self.viewscale[1] = window_size[1] as f32 / max;
     }
     
     pub fn load_car(&mut self, new_car: Car) {
@@ -169,6 +218,7 @@ impl Game {
     }
     
     pub fn render_objects(&mut self, renderpass: &mut wgpu::RenderPass) {
+        renderpass.set_bind_group(0, &self.view_bind_group, &[]);
         renderpass.set_vertex_buffer(0, self.current_map_vertex_buffer.slice(..));
         renderpass.set_vertex_buffer(1, self.current_map_location_buffer.slice(..));
         renderpass.set_index_buffer(self.current_map_index_buffer.slice(..), wgpu::IndexFormat::Uint32);

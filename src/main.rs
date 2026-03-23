@@ -22,7 +22,6 @@ struct State {
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     content: game::Game,
-    // location_bind_group: wgpu::BindGroup,
     window: Arc<Window>,
 }
 
@@ -47,79 +46,6 @@ impl State {
 
         let raster_shader =
             device.create_shader_module(wgpu::include_wgsl!("shaders/main.wgsl").into());
-
-        // let car_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Car Vertex Buffer"),
-        //     contents: bytemuck::cast_slice(CAR_BODY_VERTICES),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-
-        // let car_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Car Index Buffer"),
-        //     contents: bytemuck::cast_slice(CAR_BODY_INDICES),
-        //     usage: wgpu::BufferUsages::INDEX,
-        // });
-
-        // let map_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Map Vertex Buffer"),
-        //     contents: bytemuck::cast_slice(MAP_VERTICES),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-
-        // let map_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Map Index Buffer"),
-        //     contents: bytemuck::cast_slice(MAP_INDICES),
-        //     usage: wgpu::BufferUsages::INDEX,
-        // });
-
-        // let mut car_location: Vec<Location> = Vec::new();
-
-        // car_location.push(Location::new());
-        // car_location[0].position = [10., 0.];
-
-        // let mut map_location: Vec<Location> = Vec::new();
-
-        // map_location.push(Location::new());
-        // map_location[0].position = [0., 0.];
-
-        // let car_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Car Locations Buffer"),
-        //     contents: bytemuck::cast_slice(&car_location),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-
-        // let map_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Map Location Buffer"),
-        //     contents: bytemuck::cast_slice(&map_location),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-
-        // let location_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        //     label: Some("Location Bind Group Layout"),
-        //     entries: &[
-        //         wgpu::BindGroupLayoutEntry {
-        //             binding: 0,
-        //             visibility: wgpu::ShaderStages::VERTEX,
-        //             ty: wgpu::BindingType::Buffer {
-        //                 ty: wgpu::BufferBindingType::Uniform,
-        //                 has_dynamic_offset: false,
-        //                 min_binding_size: None,
-        //             },
-        //             count: None,
-        //         }
-        //     ],
-        // });
-
-        // let location_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     label: Some("Location Bind Group"),
-        //     layout: &location_bind_layout,
-        //     entries: &[
-        //         wgpu::BindGroupEntry {
-        //             binding: 0,
-        //             resource: location_buffer.as_entire_binding(),
-        //         }
-        //     ],
-        // });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -169,9 +95,6 @@ impl State {
             cache: None,
         });
 
-        // let num_map_indices = MAP_INDICES.len() as u32;
-        // let num_car_indices = CAR_BODY_INDICES.len() as u32;
-
         let state = State {
             surface,
             surface_format,
@@ -209,6 +132,8 @@ impl State {
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.size = new_size;
         self.configure_surface();
+        let resize_scale: &[u32; 2] = &[self.size.width, self.size.height];
+        self.content.resize_viewport(&resize_scale);
     }
 
     fn render(&mut self) {
@@ -242,7 +167,6 @@ impl State {
         });
 
         renderpass.set_pipeline(&self.render_pipeline);
-        // renderpass.set_bind_group(0, &self.location_bind_group, &[]);
 
         self.content.render_objects(&mut renderpass);
         
