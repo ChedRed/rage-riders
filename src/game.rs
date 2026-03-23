@@ -21,45 +21,46 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn create(device: &wgpu::Device) -> Self {
-        // let map_vertices: Box<[Vertex]> = vec![ //TODO: load everything from an include_str! like function (include_vertices! and include_indices!)
-        //     Vertex {
-        //         position: [-5., -5.],
-        //         color: [0.1, 0.1, 0.1, 1.],
-        //     },
-        //     Vertex {
-        //         position: [10., -5.],
-        //         color: [0.1, 0.1, 0.1, 1.],
-        //     },
-        //     Vertex {
-        //         position: [-5., 10.],
-        //         color: [0.1, 0.1, 0.1, 1.],
-        //     },
-        //     Vertex {
-        //         position: [10., 10.],
-        //         color: [0.1, 0.1, 0.1, 1.],
-        //     },
-        //     Vertex {
-        //         position: [0., 0.],
-        //         color: [0.4, 0.4, 0.4, 1.],
-        //     },
-        //     Vertex {
-        //         position: [0., 10.],
-        //         color: [0.4, 0.4, 0.4, 1.],
-        //     },
-        //     Vertex {
-        //         position: [10., 0.],
-        //         color: [0.4, 0.4, 0.4, 1.],
-        //     },
-        //     Vertex {
-        //         position: [10., 10.],
-        //         color: [0.4, 0.4, 0.4, 1.],
-        //     },
-        // ].into_boxed_slice();
+    pub fn create(device: &wgpu::Device) -> Self {        
+        let map_vertices: Box<[Vertex]> = vec![ //TODO: load everything from an include_str! like function (include_vertices! and include_indices!)
+            Vertex {
+                position: [-5., -5.],
+                color: [0.1, 0.1, 0.1, 1.],
+            },
+            Vertex {
+                position: [10., -5.],
+                color: [0.1, 0.1, 0.1, 1.],
+            },
+            Vertex {
+                position: [-5., 10.],
+                color: [0.1, 0.1, 0.1, 1.],
+            },
+            Vertex {
+                position: [10., 10.],
+                color: [0.1, 0.1, 0.1, 1.],
+            },
+            Vertex {
+                position: [0., 0.],
+                color: [0.4, 0.4, 0.4, 1.],
+            },
+            Vertex {
+                position: [0., 10.],
+                color: [0.4, 0.4, 0.4, 1.],
+            },
+            Vertex {
+                position: [10., 0.],
+                color: [0.4, 0.4, 0.4, 1.],
+            },
+            Vertex {
+                position: [10., 10.],
+                color: [0.4, 0.4, 0.4, 1.],
+            },
+        ].into_boxed_slice();
         
-        // let map_indices: Box<[u32]> = vec![0, 1, 2, 3, 3, 4, 4, 5, 6, 7].into_boxed_slice();
+        let map_indices: Box<[u32]> = vec![0, 1, 2, 3, 3, 4, 4, 5, 6, 7].into_boxed_slice();
     
-        let (map_vertices, map_indices) = include_vectors!("vectors/map_0.json");
+        println!("Got this far :)");
+        // let (map_vertices, map_indices) = include_vectors!("vectors/map_0.json");
         
         let map_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Map Vertex Buffer"),
@@ -125,7 +126,7 @@ impl Game {
             label: Some("First Car Location Buffer"),
             contents: bytemuck::cast_slice(&new_cars_locations[0]),
             usage: wgpu::BufferUsages::VERTEX,
-        })];
+        })];        
         
         
         Self {

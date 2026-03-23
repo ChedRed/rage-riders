@@ -66,6 +66,8 @@ impl Location {
 macro_rules! include_object {
     ($path:expr) => {{
         let vectors = include_bytes!("vectors/data_schema.json");
+        
+        
     }};
 }
 
