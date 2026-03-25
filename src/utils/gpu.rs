@@ -1,6 +1,3 @@
-use assert_json_diff::assert_json_include;
-use serde_json::json;
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, serde::Deserialize, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
@@ -33,14 +30,14 @@ impl Vertex {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Location {
     pub position: [f32; 2],
-    pub rotation: [f32; 2],
+    pub rotation: [f32; 4],
 }
 
 impl Location {
     pub fn new() -> Self {
         Self {
             position: [0., 0.],
-            rotation: [0., 0.],
+            rotation: [0., 0., 0., 0.],
         }
     }
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -56,7 +53,7 @@ impl Location {
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     shader_location: 3,
-                    format: wgpu::VertexFormat::Float32x2,
+                    format: wgpu::VertexFormat::Float32x4,
                 },
             ],
         }
@@ -65,29 +62,58 @@ impl Location {
 
 macro_rules! include_object {
     ($path:expr) => {{
-        let vectors = include_bytes!("vectors/data_schema.json");
+        let mut offset: usize = 0;
         
+        static BYTES: &[u8] = include_bytes!($path);
         
+        let mut center: [f32; 2] = [0., 0.];
+        center[0] = f32::from_be_bytes(
+            BYTES[offset..offset+4].try_into().expect("Invalid file! Are you sure it has been filled out properly?")
+        );
+        offset += 4;
+        center[1] = f32::from_be_bytes(
+            BYTES[offset..offset+4].try_into().expect("Invalid file! Are you sure it has been filled out properly?")
+        );
+        offset += 4;
+        
+        let mut count: usize = u32::from_be_bytes(
+            BYTES[offset..offset+4].try_into().expect("Invalid file! Are you sure it has been filled out properly?")
+        ) as usize;
+        offset += 4;
+        
+        let mut pre_indices: Vec<u32> = Vec::with_capacity(count);
+        
+        for _ in 0..count {
+            let chunk = &BYTES[offset..offset+4];
+            pre_indices.push(u32::from_be_bytes(chunk.try_into().unwrap()));
+            offset += 4;
+        }
+        
+        count = u32::from_be_bytes(
+            BYTES[offset..offset+4].try_into().expect("Invalid file! Are you sure it has been filled out properly?")
+        ) as usize;
+        offset += 4;
+        
+        let mut pre_vertices: Vec<Vertex> = Vec::with_capacity(count);
+        
+        for _ in 0..count {
+            pre_vertices.push(Vertex {
+                position: [
+                    f32::from_be_bytes(BYTES[offset..offset+4].try_into().unwrap()),
+                    f32::from_be_bytes(BYTES[offset+4..offset+8].try_into().unwrap()),
+                ],
+                color: [
+                    f32::from_be_bytes(BYTES[offset+8..offset+12].try_into().unwrap()),
+                    f32::from_be_bytes(BYTES[offset+12..offset+16].try_into().unwrap()),
+                    f32::from_be_bytes(BYTES[offset+16..offset+20].try_into().unwrap()),
+                    f32::from_be_bytes(BYTES[offset+20..offset+24].try_into().unwrap()),    
+                ],
+            });
+            offset += 24;
+        }
+        
+        (pre_vertices.into_boxed_slice(), pre_indices.into_boxed_slice(), center)
     }};
 }
 
-macro_rules! include_vectors {
-    ($path:expr) => {{
-        let vectors = include_str!($path);
-        let schema = include_str!("vectors/data_schema.json");
-        
-        let vector_json: serde_json::Value = serde_json::from_str(vectors).unwrap();
-        let json_schema: serde_json::Value = serde_json::from_str(schema).unwrap();
-        
-        assert_json_diff::assert_json_include!(actual: vector_json, expected: json_schema);
-        
-        let vertices: Vec<Vertex> = serde_json::from_value(vector_json["vertices"].clone()).unwrap();
-        let indices: Vec<u32> = serde_json::from_value(vector_json["indices"].clone()).unwrap();
-        
-        let box_vertices: Box<[Vertex]> = vertices.into_boxed_slice();
-        let box_indices: Box<[u32]> = indices.into_boxed_slice();
-        
-        (box_vertices, box_indices)
-    }};
-}
-pub(crate) use include_vectors;
+pub(crate) use include_object;

@@ -8,7 +8,7 @@ struct VertexInput {
     @location(1) color: vec4<f32>,
     
     @location(2) offset: vec2<f32>,
-    @location(3) rotation: vec2<f32>,
+    @location(3) rotation: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -24,7 +24,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
     out.color = model.color;
-    var pos: vec2<f32> = model.position + model.offset;
+    var pos: vec2<f32> = model.position + model.offset + view.port.xy;
     pos *= 0.05;
     pos *= view.scale;
     out.clip_position = vec4<f32>(pos, 0.0, 1.0);

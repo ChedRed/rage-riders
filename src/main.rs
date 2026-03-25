@@ -50,7 +50,7 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Layout for Primary Render Pipeline"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&content.view_bind_layout],
                 immediate_size: 0,
             });
 
@@ -68,7 +68,7 @@ impl State {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -168,9 +168,10 @@ impl State {
 
         renderpass.set_pipeline(&self.render_pipeline);
 
-        self.content.render_objects(&mut renderpass);
+        self.content.render_objects(&mut self.queue, &mut renderpass);
         
         drop(renderpass);
+        
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         surface_texture.present();
