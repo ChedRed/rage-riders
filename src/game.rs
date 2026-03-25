@@ -26,21 +26,21 @@ impl View {
 }
 
 pub struct Game {
-    pub view: View,
-    pub view_buffer: wgpu::Buffer,
-    pub view_bind_group: wgpu::BindGroup,
-    pub view_bind_layout: wgpu::BindGroupLayout,
+    view: View,
+    view_buffer: wgpu::Buffer,
+    view_bind_group: wgpu::BindGroup,
+    view_bind_layout: wgpu::BindGroupLayout,
     
-    pub current_map: Map,
-    pub current_map_location: Location,
-    pub current_map_vertex_buffer: wgpu::Buffer,
-    pub current_map_index_buffer: wgpu::Buffer,
-    pub current_map_location_buffer: wgpu::Buffer,
-    pub cars: Vec<Car>,
-    pub cars_locations: Vec<Vec<Location>>,
-    pub cars_vertex_buffers: Vec<wgpu::Buffer>,
-    pub cars_index_buffers: Vec<wgpu::Buffer>,
-    pub cars_location_buffers: Vec<wgpu::Buffer>,
+    current_map: Map,
+    current_map_location: Location,
+    current_map_vertex_buffer: wgpu::Buffer,
+    current_map_index_buffer: wgpu::Buffer,
+    current_map_location_buffer: wgpu::Buffer,
+    cars: Vec<Car>,
+    cars_locations: Vec<Vec<Location>>,
+    cars_vertex_buffers: Vec<wgpu::Buffer>,
+    cars_index_buffers: Vec<wgpu::Buffer>,
+    cars_location_buffers: Vec<wgpu::Buffer>,
 }
 
 impl Game {
@@ -69,7 +69,7 @@ impl Game {
         let map_location_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Map Location Buffer"),
             contents: bytemuck::cast_slice(&[map_location]),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         
         let (car_body_vertices, car_body_indices, car_body_center) = include_object!("vectors/car_0.vec");
@@ -95,7 +95,7 @@ impl Game {
         let new_cars_location_buffer = vec![device.create_buffer_init(&wgpu::util::BufferInitDescriptor { // TODO: Remember to EXPAND for more cars!!!! Use for loop to dynamically make larger pls :)
             label: Some("First Car Location Buffer"),
             contents: bytemuck::cast_slice(&new_cars_locations[0]),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         })];        
         
         let new_view: View = View::new();
@@ -158,17 +158,24 @@ impl Game {
         self.view.scale[1] = window_size[0] as f32 / max;
     }
     
-    pub fn load_car(&mut self, new_car: Car) {
+    fn load_car(&mut self, new_car: Car) {
         self.cars.push(new_car);
     }
     
-    pub fn load_map(&mut self, new_map: Map) {
+    fn load_map(&mut self, new_map: Map) {
         self.current_map = new_map;
     }
     
     pub fn move_car(&mut self, index: usize, movement: &[f32; 2]) {
         self.cars[index].position[0] += movement[0];
         self.cars[index].position[1] += movement[1];
+    }
+    
+    pub fn update_objects(&mut self, queue: &mut wgpu::Queue) {
+        for i in 0..self.cars.len() {
+            self.cars_locations[i][0].rotation[2] += 0.01;
+            queue.write_buffer(&self.cars_location_buffers[i], 0, bytemuck::cast_slice(&self.cars_locations[i]));
+        }
     }
     
     pub fn render_objects(&mut self, queue: &mut wgpu::Queue, renderpass: &mut wgpu::RenderPass) {

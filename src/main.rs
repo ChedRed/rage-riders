@@ -137,6 +137,8 @@ impl State {
     }
 
     fn render(&mut self) {
+        self.content.update_objects(&mut self.queue);
+        
         let surface_texture = self
             .surface
             .get_current_texture()
