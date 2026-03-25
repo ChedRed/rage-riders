@@ -10,9 +10,9 @@ use winit::window::{Window, WindowId};
 pub mod utils;
 use utils::gpu::{Vertex, Location};
 
-use crate::game::Game;
+use crate::content::Content;
 
-pub mod game;
+pub mod content;
 
 struct State {
     surface: wgpu::Surface<'static>,
@@ -21,7 +21,7 @@ struct State {
     queue: wgpu::Queue,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    content: game::Game,
+    content: content::Content,
     window: Arc<Window>,
 }
 
@@ -37,22 +37,20 @@ impl State {
             .await
             .unwrap();
         
-        let content: game::Game = Game::create(&device);
+        let content: content::Content = Content::create(&device);
 
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
         let cap = surface.get_capabilities(&adapter);
         let surface_format = cap.formats[0];
 
-        let raster_shader =
-            device.create_shader_module(wgpu::include_wgsl!("shaders/main.wgsl").into());
+        let raster_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/main.wgsl").into());
 
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Layout for Primary Render Pipeline"),
-                bind_group_layouts: &[&content.view_bind_layout],
-                immediate_size: 0,
-            });
+        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Layout for Primary Render Pipeline"),
+            bind_group_layouts: &[&content.view_bind_layout],
+            immediate_size: 0,
+        });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Primary Render Pipeline"),

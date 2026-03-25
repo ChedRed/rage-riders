@@ -25,11 +25,11 @@ impl View {
     }
 }
 
-pub struct Game {
+pub struct Content {
     view: View,
     view_buffer: wgpu::Buffer,
     view_bind_group: wgpu::BindGroup,
-    view_bind_layout: wgpu::BindGroupLayout,
+    pub view_bind_layout: wgpu::BindGroupLayout,
     
     current_map: Map,
     current_map_location: Location,
@@ -43,7 +43,7 @@ pub struct Game {
     cars_location_buffers: Vec<wgpu::Buffer>,
 }
 
-impl Game {
+impl Content {
     pub fn create(device: &wgpu::Device) -> Self {        
     
         let (map_vertices, map_indices, map_center) = include_object!("vectors/map_0.vec");
