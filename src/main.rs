@@ -6,6 +6,7 @@ use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
+use chrono;
 
 pub mod utils;
 use utils::gpu::{Vertex, Location};
@@ -28,21 +29,15 @@ struct State {
 impl State {
     async fn new(window: Arc<Window>) -> State {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .unwrap();
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .unwrap();
+        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions::default()).await.unwrap();
+        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default()).await.unwrap();
         
-        let content: content::Content = Content::create(&device);
-
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
         let cap = surface.get_capabilities(&adapter);
         let surface_format = cap.formats[0];
+        
+        let content: content::Content = Content::create(&device, size);
 
         let raster_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/main.wgsl").into());
 
@@ -92,6 +87,7 @@ impl State {
             multiview_mask: None,
             cache: None,
         });
+        
 
         let state = State {
             surface,
@@ -167,7 +163,7 @@ impl State {
         });
 
         renderpass.set_pipeline(&self.render_pipeline);
-
+        
         self.content.render_objects(&mut self.queue, &mut renderpass);
         
         drop(renderpass);
@@ -185,11 +181,7 @@ struct App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes())
-                .unwrap(),
-        );
+        let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
 
         let state = pollster::block_on(State::new(window.clone()));
         self.state = Some(state);

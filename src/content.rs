@@ -5,28 +5,35 @@ use crate::utils::gpu::{Vertex, Location, include_object};
 use maps::map::Map;
 use vehicles::car::Car;
 use wgpu::util::DeviceExt;
-use std::cmp::max;
+use std::cmp::{min, max};
+use chrono;
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, serde::Deserialize, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct View {
+    pub time: [f32; 2],
     pub scale: [f32; 2],
-    pub port: [f32; 4],
-    pub buffer: [f32; 2],
+    pub position: [f32; 2],
+    pub rotation: [f32; 2],
 }
 
 impl View {
     pub fn new() -> Self {
         Self {
+            time: [0., 0.],
             scale: [1., 1.],
-            port: [10., 0., 0., 0.],
-            buffer: [0., 0.],
+            position: [0., 0.],
+            rotation: [0., 0.],
         }
     }
 }
 
 pub struct Content {
+    init_time: chrono::DateTime<chrono::Utc>,
+    last_time: chrono::DateTime<chrono::Utc>,
     view: View,
+    window: [f32; 4],
     view_buffer: wgpu::Buffer,
     view_bind_group: wgpu::BindGroup,
     pub view_bind_layout: wgpu::BindGroupLayout,
@@ -44,13 +51,11 @@ pub struct Content {
 }
 
 impl Content {
-    pub fn create(device: &wgpu::Device) -> Self {        
-    
+    pub fn create(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> Self {        
         let (map_vertices, map_indices, map_center) = include_object!("vectors/map_0.vec");
         
         let mut map_location: Location = Location::new();
-        map_location.rotation[0] = map_center[0];
-        map_location.rotation[1] = map_center[1];
+        map_location.center = map_center;
         
         let map_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Map Vertex Buffer"),
@@ -89,8 +94,7 @@ impl Content {
         let new_cars: Vec<Car> = vec![Car::new(car_body_vertices, car_body_indices)];
         
         let mut new_cars_locations: Vec<Vec<Location>> = vec![vec![Location::new()]];
-        new_cars_locations[0][0].rotation[0] = car_body_center[0];
-        new_cars_locations[0][0].rotation[1] = car_body_center[1];
+        new_cars_locations[0][0].center = car_body_center;
         
         let new_cars_location_buffer = vec![device.create_buffer_init(&wgpu::util::BufferInitDescriptor { // TODO: Remember to EXPAND for more cars!!!! Use for loop to dynamically make larger pls :)
             label: Some("First Car Location Buffer"),
@@ -98,7 +102,12 @@ impl Content {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         })];        
         
-        let new_view: View = View::new();
+        let mut new_view: View = View::new();
+        let min: f32 = min(size.width, size.height) as f32;
+        let max: f32 = max(size.width, size.height) as f32;
+        new_view.scale = [size.height as f32 / max, size.width as f32 / max];
+        
+        let new_window: [f32; 4] = [(size.width as f32 - min) / 2., (size.height as f32 - min) / 2., min, min];
         
         let new_view_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Viewport Buffer"),
@@ -134,7 +143,10 @@ impl Content {
         });
         
         Self {
+            init_time: chrono::Utc::now(),
+            last_time: chrono::Utc::now(),
             view: new_view,
+            window: new_window,
             view_buffer: new_view_buffer,
             view_bind_group: new_view_bind_group,
             view_bind_layout: new_view_bind_layout,
@@ -152,17 +164,19 @@ impl Content {
     }
     
     pub fn resize_viewport(&mut self, window_size: &[u32; 2]) {
+        let min: f32 = min(window_size[0], window_size[1]) as f32;
         let max: f32 = max(window_size[0], window_size[1]) as f32;
         
-        self.view.scale[0] = window_size[1] as f32 / max;
-        self.view.scale[1] = window_size[0] as f32 / max;
+        self.view.scale = [window_size[1] as f32 / max, window_size[0] as f32 / max];
+        self.window = [(window_size[0] as f32 - min) / 2., (window_size[1] as f32 - min) / 2., min, min];
+        
     }
     
-    fn load_car(&mut self, new_car: Car) {
+    pub fn load_car(&mut self, new_car: Car) {
         self.cars.push(new_car);
     }
     
-    fn load_map(&mut self, new_map: Map) {
+    pub fn load_map(&mut self, new_map: Map) {
         self.current_map = new_map;
     }
     
@@ -173,12 +187,15 @@ impl Content {
     
     pub fn update_objects(&mut self, queue: &mut wgpu::Queue) {
         for i in 0..self.cars.len() {
-            self.cars_locations[i][0].rotation[2] += 0.01;
             queue.write_buffer(&self.cars_location_buffers[i], 0, bytemuck::cast_slice(&self.cars_locations[i]));
         }
     }
     
     pub fn render_objects(&mut self, queue: &mut wgpu::Queue, renderpass: &mut wgpu::RenderPass) {
+        renderpass.set_viewport(self.window[0], self.window[1], self.window[2], self.window[3], 0., 1.);
+        
+        self.view.time[0] = chrono::Utc::now().signed_duration_since(self.init_time).as_seconds_f32();
+        self.view.time[1] = chrono::Utc::now().signed_duration_since(self.last_time).as_seconds_f32();
         queue.write_buffer(&self.view_buffer, 0, bytemuck::bytes_of(&[self.view]));
         
         renderpass.set_bind_group(0, &self.view_bind_group, &[]);
@@ -193,5 +210,7 @@ impl Content {
             renderpass.set_index_buffer(self.cars_index_buffers[i].slice(..), wgpu::IndexFormat::Uint32);
             renderpass.draw_indexed(0..self.cars[i].indices.len() as u32, 0, 0..self.cars_locations[i].len() as _);
         }
+        
+        self.last_time = chrono::Utc::now();
     }
 }

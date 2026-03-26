@@ -30,14 +30,16 @@ impl Vertex {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Location {
     pub position: [f32; 2],
-    pub rotation: [f32; 4],
+    pub center: [f32; 2],
+    pub rotation: [f32; 2],
 }
 
 impl Location {
     pub fn new() -> Self {
         Self {
             position: [0., 0.],
-            rotation: [0., 0., 0., 0.],
+            center: [0., 0.],
+            rotation: [0., 0.],
         }
     }
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -53,7 +55,12 @@ impl Location {
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     shader_location: 3,
-                    format: wgpu::VertexFormat::Float32x4,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                    shader_location: 4,
+                    format: wgpu::VertexFormat::Float32x2,
                 },
             ],
         }
