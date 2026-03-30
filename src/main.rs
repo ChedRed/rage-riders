@@ -5,10 +5,7 @@ use std::time::Duration;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::KeyCode;
-use winit::platform::scancode::PhysicalKeyExtScancode;
 use winit::window::{Window, WindowId};
-use chrono;
 
 pub mod utils;
 use utils::gpu::{Vertex, Location};

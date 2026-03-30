@@ -1,11 +1,11 @@
 pub mod maps;
 pub mod vehicles;
 
-use crate::utils::gpu::{Vertex, Location, include_object};
+use crate::utils::{gpu::{Location, Vertex, include_object}, transform::Vector2};
 use maps::map::Map;
 use vehicles::car::Car;
 use wgpu::util::DeviceExt;
-use std::{cmp::{max, min}, collections::HashMap};
+use std::cmp::{max, min};
 use chrono;
 
 pub struct Control {
@@ -57,7 +57,8 @@ pub struct Content {
     current_map_location_buffer: wgpu::Buffer,
     cars: Vec<Car>,
     focused_car: [usize; 2],
-    cars_locations: Vec<Vec<Location>>,
+    cars_positions: Vec<Vec<Vector2>>,
+    cars_gpu_locations: Vec<Vec<Location>>,
     cars_vertex_buffers: Vec<wgpu::Buffer>,
     cars_index_buffers: Vec<wgpu::Buffer>,
     cars_location_buffers: Vec<wgpu::Buffer>,
@@ -114,12 +115,13 @@ impl Content {
         
         let new_cars: Vec<Car> = vec![Car::new(car_body_vertices, car_body_indices)];
         
-        let mut new_cars_locations: Vec<Vec<Location>> = vec![vec![Location::new()]];
-        new_cars_locations[0][0].center = car_body_center;
+        let new_cars_positions: Vec<Vec<Vector2>> = vec![vec![Vector2::new()]];
+        let mut new_cars_gpu_locations: Vec<Vec<Location>> = vec![vec![Location::new()]];
+        new_cars_gpu_locations[0][0].center = car_body_center;
         
         let new_cars_location_buffer = vec![device.create_buffer_init(&wgpu::util::BufferInitDescriptor { // TODO: Remember to EXPAND for more cars!!!! Use for loop to dynamically make larger pls :)
             label: Some("First Car Location Buffer"),
-            contents: bytemuck::cast_slice(&new_cars_locations[0]),
+            contents: bytemuck::cast_slice(&new_cars_gpu_locations[0]),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         })];        
         
@@ -178,7 +180,8 @@ impl Content {
             current_map_location_buffer: map_location_buffer,
             cars: new_cars,
             focused_car: [0, 0],
-            cars_locations: new_cars_locations,
+            cars_positions: new_cars_positions,
+            cars_gpu_locations: new_cars_gpu_locations,
             cars_vertex_buffers: new_cars_vertex_buffer,
             cars_index_buffers: new_cars_index_buffer,
             cars_location_buffers: new_cars_location_buffer,
@@ -203,32 +206,34 @@ impl Content {
         self.current_map = new_map;
     }
     
-    pub fn move_car(&mut self, variant: usize, index: usize, movement: [f32; 2]) {
-        self.cars_locations[variant][index].position[0] += movement[0];
-        self.cars_locations[variant][index].position[1] += movement[1];
+    pub fn move_car(&mut self, variant: usize, index: usize, distance: f32, angle: f32) {
+        self.cars_gpu_locations[variant][index].rotation[0] += angle;
+        self.cars_positions[variant][index].onward(distance, self.cars_gpu_locations[variant][index].rotation[0]);
+        self.cars_gpu_locations[variant][index].position[0] = self.cars_positions[variant][index].x;
+        self.cars_gpu_locations[variant][index].position[1] = self.cars_positions[variant][index].y;
     }
     
     pub fn update_objects(&mut self, queue: &mut wgpu::Queue) {
         if self.controls[0].state {
-            self.move_car(self.focused_car[0], self.focused_car[1], [0., 0.1]);
+            self.move_car(self.focused_car[0], self.focused_car[1], 0.1, 0.);
         }
         if self.controls[1].state {
-            self.move_car(self.focused_car[0], self.focused_car[1], [0., -0.1]);
+            self.move_car(self.focused_car[0], self.focused_car[1], -0.1, 0.);
         }
         if self.controls[2].state {
-            self.move_car(self.focused_car[0], self.focused_car[1], [-0.1, 0.]);
+            self.move_car(self.focused_car[0], self.focused_car[1], 0., 0.1);
         }
         if self.controls[3].state {
-            self.move_car(self.focused_car[0], self.focused_car[1], [0.1, 0.]);
+            self.move_car(self.focused_car[0], self.focused_car[1], 0., -0.1);
         }
         
         
         for i in 0..self.cars.len() {
-            queue.write_buffer(&self.cars_location_buffers[i], 0, bytemuck::cast_slice(&self.cars_locations[i]));
+            queue.write_buffer(&self.cars_location_buffers[i], 0, bytemuck::cast_slice(&self.cars_gpu_locations[i]));
         }
         
-        self.view.position[0] = -self.cars_locations[self.focused_car[0]][self.focused_car[1]].position[0] + 0.99*(self.view.position[0]+self.cars_locations[self.focused_car[0]][self.focused_car[1]].position[0]); // TODO: replace many [f32; 2]'s with Vector2 class!
-        self.view.position[1] = -self.cars_locations[self.focused_car[0]][self.focused_car[1]].position[1] + 0.99*(self.view.position[1]+self.cars_locations[self.focused_car[0]][self.focused_car[1]].position[1]); // TODO: fix the camera position being inverted!
+        self.view.position[0] = -self.cars_gpu_locations[self.focused_car[0]][self.focused_car[1]].position[0] + 0.99*(self.view.position[0]+self.cars_gpu_locations[self.focused_car[0]][self.focused_car[1]].position[0]); // TODO: replace many [f32; 2]'s with Vector2 class!
+        self.view.position[1] = -self.cars_gpu_locations[self.focused_car[0]][self.focused_car[1]].position[1] + 0.99*(self.view.position[1]+self.cars_gpu_locations[self.focused_car[0]][self.focused_car[1]].position[1]); // TODO: fix the camera position being inverted!
         
         // For the Vector2 class:
         // * .rotate(f32) will rotate the vector by that amount of radians.
@@ -258,7 +263,7 @@ impl Content {
             renderpass.set_vertex_buffer(0, self.cars_vertex_buffers[i].slice(..));
             renderpass.set_vertex_buffer(1, self.cars_location_buffers[i].slice(..));
             renderpass.set_index_buffer(self.cars_index_buffers[i].slice(..), wgpu::IndexFormat::Uint32);
-            renderpass.draw_indexed(0..self.cars[i].indices.len() as u32, 0, 0..self.cars_locations[i].len() as _);
+            renderpass.draw_indexed(0..self.cars[i].indices.len() as u32, 0, 0..self.cars_gpu_locations[i].len() as _);
         }
         
         self.last_time = chrono::Utc::now();
