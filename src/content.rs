@@ -5,9 +5,22 @@ use crate::utils::gpu::{Vertex, Location, include_object};
 use maps::map::Map;
 use vehicles::car::Car;
 use wgpu::util::DeviceExt;
-use std::cmp::{min, max};
+use std::{cmp::{max, min}, collections::HashMap};
 use chrono;
 
+pub struct Control {
+    name: String,
+    pub state: bool,
+}
+
+impl Control {
+    pub fn new(new_name: String) -> Self {
+        Self {
+            name: new_name,
+            state: false,
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, serde::Deserialize, bytemuck::Pod, bytemuck::Zeroable)]
@@ -39,19 +52,27 @@ pub struct Content {
     pub view_bind_layout: wgpu::BindGroupLayout,
     
     current_map: Map,
-    current_map_location: Location,
     current_map_vertex_buffer: wgpu::Buffer,
     current_map_index_buffer: wgpu::Buffer,
     current_map_location_buffer: wgpu::Buffer,
     cars: Vec<Car>,
+    focused_car: [usize; 2],
     cars_locations: Vec<Vec<Location>>,
     cars_vertex_buffers: Vec<wgpu::Buffer>,
     cars_index_buffers: Vec<wgpu::Buffer>,
     cars_location_buffers: Vec<wgpu::Buffer>,
+    
+    pub controls: Vec<Control>,
 }
 
 impl Content {
-    pub fn create(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> Self {        
+    pub fn create(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> Self {
+        let mut new_controls: Vec<Control> = Vec::new();
+        new_controls.push(Control::new("Forward".to_string()));
+        new_controls.push(Control::new("Backward".to_string()));
+        new_controls.push(Control::new("Left".to_string()));
+        new_controls.push(Control::new("Right".to_string()));
+        
         let (map_vertices, map_indices, map_center) = include_object!("vectors/map_0.vec");
         
         let mut map_location: Location = Location::new();
@@ -150,16 +171,18 @@ impl Content {
             view_buffer: new_view_buffer,
             view_bind_group: new_view_bind_group,
             view_bind_layout: new_view_bind_layout,
+            
             current_map: map,
-            current_map_location: map_location,
             current_map_vertex_buffer: map_vertex_buffer,
             current_map_index_buffer: map_index_buffer,
             current_map_location_buffer: map_location_buffer,
             cars: new_cars,
+            focused_car: [0, 0],
             cars_locations: new_cars_locations,
             cars_vertex_buffers: new_cars_vertex_buffer,
             cars_index_buffers: new_cars_index_buffer,
             cars_location_buffers: new_cars_location_buffer,
+            controls: new_controls,
         }
     }
     
@@ -180,15 +203,42 @@ impl Content {
         self.current_map = new_map;
     }
     
-    pub fn move_car(&mut self, index: usize, movement: &[f32; 2]) {
-        self.cars[index].position[0] += movement[0];
-        self.cars[index].position[1] += movement[1];
+    pub fn move_car(&mut self, variant: usize, index: usize, movement: [f32; 2]) {
+        self.cars_locations[variant][index].position[0] += movement[0];
+        self.cars_locations[variant][index].position[1] += movement[1];
     }
     
     pub fn update_objects(&mut self, queue: &mut wgpu::Queue) {
+        if self.controls[0].state {
+            self.move_car(self.focused_car[0], self.focused_car[1], [0., 0.1]);
+        }
+        if self.controls[1].state {
+            self.move_car(self.focused_car[0], self.focused_car[1], [0., -0.1]);
+        }
+        if self.controls[2].state {
+            self.move_car(self.focused_car[0], self.focused_car[1], [-0.1, 0.]);
+        }
+        if self.controls[3].state {
+            self.move_car(self.focused_car[0], self.focused_car[1], [0.1, 0.]);
+        }
+        
+        
         for i in 0..self.cars.len() {
             queue.write_buffer(&self.cars_location_buffers[i], 0, bytemuck::cast_slice(&self.cars_locations[i]));
         }
+        
+        self.view.position[0] = -self.cars_locations[self.focused_car[0]][self.focused_car[1]].position[0] + 0.99*(self.view.position[0]+self.cars_locations[self.focused_car[0]][self.focused_car[1]].position[0]); // TODO: replace many [f32; 2]'s with Vector2 class!
+        self.view.position[1] = -self.cars_locations[self.focused_car[0]][self.focused_car[1]].position[1] + 0.99*(self.view.position[1]+self.cars_locations[self.focused_car[0]][self.focused_car[1]].position[1]); // TODO: fix the camera position being inverted!
+        
+        // For the Vector2 class:
+        // * .rotate(f32) will rotate the vector by that amount of radians.
+        // * .forward(f32) will move the vector forward by the amount specified.
+        // * .face(Vector2) will face the vector towards the Vector2 position defined.
+        // * .distance(Vector2) will return the distance in f32 to the Vector2.
+        // * .magnitude() will return the magnitude of the vector.
+        // * .angle() will return the angle of the vector.
+        // 
+        // Additionally, implement addition, subtraction, multiplication, and division
     }
     
     pub fn render_objects(&mut self, queue: &mut wgpu::Queue, renderpass: &mut wgpu::RenderPass) {

@@ -5,6 +5,8 @@ use std::time::Duration;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::KeyCode;
+use winit::platform::scancode::PhysicalKeyExtScancode;
 use winit::window::{Window, WindowId};
 use chrono;
 
@@ -129,14 +131,23 @@ impl State {
         let resize_scale: &[u32; 2] = &[self.size.width, self.size.height];
         self.content.resize_viewport(&resize_scale);
     }
+    
+    fn keyboard_inputs(&mut self, code: winit::keyboard::KeyCode, state: bool) {
+        if code == winit::keyboard::KeyCode::KeyW {
+            self.content.controls[0].state = state;
+        } else if code == winit::keyboard::KeyCode::KeyS {
+            self.content.controls[1].state = state;
+        } else if code == winit::keyboard::KeyCode::KeyA {
+            self.content.controls[2].state = state;
+        } else if code == winit::keyboard::KeyCode::KeyD {
+            self.content.controls[3].state = state;
+        }
+    }
 
     fn render(&mut self) {
         self.content.update_objects(&mut self.queue);
         
-        let surface_texture = self
-            .surface
-            .get_current_texture()
-            .expect("Error: failed to acquire the next swapchain texture");
+        let surface_texture = self.surface.get_current_texture().expect("Error: failed to acquire the next swapchain texture");
         let texture_view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor {
@@ -189,7 +200,7 @@ impl ApplicationHandler for App {
         window.request_redraw();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        let state = self.state.as_mut().unwrap();
+        let superstate = self.state.as_mut().unwrap();
 
         match event {
             WindowEvent::CloseRequested => {
@@ -197,14 +208,24 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                state.render();
-                state.get_window().request_redraw();
+                superstate.render();
+                superstate.get_window().request_redraw();
                 thread::sleep(Duration::from_millis(6));
             }
             WindowEvent::Resized(size) => {
-                state.resize(size);
+                superstate.resize(size);
             }
+            WindowEvent::KeyboardInput {
+                event:
+                    winit::event::KeyEvent {
+                        physical_key: winit::keyboard::PhysicalKey::Code(code),
+                        state: key_state,
+                        ..
+                    },
+                ..
+            } => superstate.keyboard_inputs(code, key_state.is_pressed()),
             _ => (),
+            
         }
     }
 }
