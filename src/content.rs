@@ -1,37 +1,52 @@
 pub mod maps;
 pub mod vehicles;
+pub mod physics;
 
 use crate::utils::{gpu::{Location, Vertex, include_object}, transform::Vector2};
 use maps::map::Map;
 use vehicles::car::Car;
 use wgpu::util::DeviceExt;
-use std::cmp::{max, min};
+use std::{cmp::{max, min}, collections};
 use chrono;
 
 pub struct Control {
-    name: String,
+    pub binds: Vec<winit::keyboard::KeyCode>,
     pub state: bool,
 }
 
 impl Control {
-    pub fn new(new_name: String) -> Self {
+    pub fn new(new_binds: Vec<winit::keyboard::KeyCode>) -> Self {
         Self {
-            name: new_name,
+            binds: new_binds,
             state: false,
+        }
+    }
+}
+
+pub struct Displacement {
+    pub position: Vector2,
+    pub rotation: f32,
+}
+
+impl Displacement {
+    pub fn new() -> Self {
+        Self {
+            position: Vector2::new(),
+            rotation: 0.,
         }
     }
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, serde::Deserialize, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct View {
+pub struct GPUView {
     pub time: [f32; 2],
     pub scale: [f32; 2],
     pub position: [f32; 2],
     pub rotation: [f32; 2],
 }
 
-impl View {
+impl GPUView {
     pub fn new() -> Self {
         Self {
             time: [0., 0.],
@@ -45,11 +60,12 @@ impl View {
 pub struct Content {
     init_time: chrono::DateTime<chrono::Utc>,
     last_time: chrono::DateTime<chrono::Utc>,
-    view: View,
+    displacement: Displacement,
+    gpu_view: GPUView,
     window: [f32; 4],
-    view_buffer: wgpu::Buffer,
-    view_bind_group: wgpu::BindGroup,
-    pub view_bind_layout: wgpu::BindGroupLayout,
+    gpu_view_buffer: wgpu::Buffer,
+    gpu_view_bind_group: wgpu::BindGroup,
+    pub gpu_view_bind_layout: wgpu::BindGroupLayout,
     
     current_map: Map,
     current_map_vertex_buffer: wgpu::Buffer,
@@ -57,22 +73,22 @@ pub struct Content {
     current_map_location_buffer: wgpu::Buffer,
     cars: Vec<Car>,
     focused_car: [usize; 2],
-    cars_positions: Vec<Vec<Vector2>>,
+    cars_displacements: Vec<Vec<Displacement>>,
     cars_gpu_locations: Vec<Vec<Location>>,
     cars_vertex_buffers: Vec<wgpu::Buffer>,
     cars_index_buffers: Vec<wgpu::Buffer>,
     cars_location_buffers: Vec<wgpu::Buffer>,
     
-    pub controls: Vec<Control>,
+    pub controls: collections::HashMap<String, Control>,
 }
 
 impl Content {
     pub fn create(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> Self {
-        let mut new_controls: Vec<Control> = Vec::new();
-        new_controls.push(Control::new("Forward".to_string()));
-        new_controls.push(Control::new("Backward".to_string()));
-        new_controls.push(Control::new("Left".to_string()));
-        new_controls.push(Control::new("Right".to_string()));
+        let mut new_controls: collections::HashMap<String, Control> = collections::HashMap::new();
+        new_controls.insert("Forward".to_string(), Control::new(vec![winit::keyboard::KeyCode::KeyW]));
+        new_controls.insert("Backward".to_string(), Control::new(vec![winit::keyboard::KeyCode::KeyS]));
+        new_controls.insert("Left".to_string(), Control::new(vec![winit::keyboard::KeyCode::KeyA]));
+        new_controls.insert("Right".to_string(), Control::new(vec![winit::keyboard::KeyCode::KeyD]));
         
         let (map_vertices, map_indices, map_center) = include_object!("vectors/map_0.vec");
         
@@ -115,7 +131,7 @@ impl Content {
         
         let new_cars: Vec<Car> = vec![Car::new(car_body_vertices, car_body_indices)];
         
-        let new_cars_positions: Vec<Vec<Vector2>> = vec![vec![Vector2::new()]];
+        let new_cars_displacements: Vec<Vec<Displacement>> = vec![vec![Displacement::new()]];
         let mut new_cars_gpu_locations: Vec<Vec<Location>> = vec![vec![Location::new()]];
         new_cars_gpu_locations[0][0].center = car_body_center;
         
@@ -125,20 +141,21 @@ impl Content {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         })];        
         
-        let mut new_view: View = View::new();
+        let new_displacement: Displacement = Displacement::new();
+        let mut new_gpu_view: GPUView = GPUView::new();
         let min: f32 = min(size.width, size.height) as f32;
         let max: f32 = max(size.width, size.height) as f32;
-        new_view.scale = [size.height as f32 / max, size.width as f32 / max];
+        new_gpu_view.scale = [size.height as f32 / max, size.width as f32 / max];
         
         let new_window: [f32; 4] = [(size.width as f32 - min) / 2., (size.height as f32 - min) / 2., min, min];
         
-        let new_view_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let new_gpu_view_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Viewport Buffer"),
-            contents: bytemuck::cast_slice(&[new_view]),
+            contents: bytemuck::cast_slice(&[new_gpu_view]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
         
-        let new_view_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let new_gpu_view_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Viewport Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -154,13 +171,13 @@ impl Content {
             ],
         });
 
-        let new_view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let new_gpu_view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Viewport Bind Group"),
-            layout: &new_view_bind_layout,
+            layout: &new_gpu_view_bind_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: new_view_buffer.as_entire_binding(),
+                    resource: new_gpu_view_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -168,11 +185,12 @@ impl Content {
         Self {
             init_time: chrono::Utc::now(),
             last_time: chrono::Utc::now(),
-            view: new_view,
+            displacement: new_displacement,
+            gpu_view: new_gpu_view,
             window: new_window,
-            view_buffer: new_view_buffer,
-            view_bind_group: new_view_bind_group,
-            view_bind_layout: new_view_bind_layout,
+            gpu_view_buffer: new_gpu_view_buffer,
+            gpu_view_bind_group: new_gpu_view_bind_group,
+            gpu_view_bind_layout: new_gpu_view_bind_layout,
             
             current_map: map,
             current_map_vertex_buffer: map_vertex_buffer,
@@ -180,7 +198,7 @@ impl Content {
             current_map_location_buffer: map_location_buffer,
             cars: new_cars,
             focused_car: [0, 0],
-            cars_positions: new_cars_positions,
+            cars_displacements: new_cars_displacements,
             cars_gpu_locations: new_cars_gpu_locations,
             cars_vertex_buffers: new_cars_vertex_buffer,
             cars_index_buffers: new_cars_index_buffer,
@@ -193,7 +211,7 @@ impl Content {
         let min: f32 = min(window_size[0], window_size[1]) as f32;
         let max: f32 = max(window_size[0], window_size[1]) as f32;
         
-        self.view.scale = [window_size[1] as f32 / max, window_size[0] as f32 / max];
+        self.gpu_view.scale = [window_size[1] as f32 / max, window_size[0] as f32 / max];
         self.window = [(window_size[0] as f32 - min) / 2., (window_size[1] as f32 - min) / 2., min, min];
         
     }
@@ -207,23 +225,25 @@ impl Content {
     }
     
     pub fn move_car(&mut self, variant: usize, index: usize, distance: f32, angle: f32) {
-        self.cars_gpu_locations[variant][index].rotation[0] += angle;
-        self.cars_positions[variant][index].onward(distance, self.cars_gpu_locations[variant][index].rotation[0]);
-        self.cars_gpu_locations[variant][index].position[0] = self.cars_positions[variant][index].x;
-        self.cars_gpu_locations[variant][index].position[1] = self.cars_positions[variant][index].y;
+        self.cars_displacements[variant][index].rotation += angle;
+        self.cars_displacements[variant][index].position.onward(distance, self.cars_gpu_locations[variant][index].rotation[0]);
+        self.cars_gpu_locations[variant][index].rotation[0] = self.cars_displacements[variant][index].rotation;
+        self.cars_gpu_locations[variant][index].position[0] = self.cars_displacements[variant][index].position.x;
+        self.cars_gpu_locations[variant][index].position[1] = self.cars_displacements[variant][index].position.y;
     }
     
     pub fn update_objects(&mut self, queue: &mut wgpu::Queue) {
-        if self.controls[0].state {
+        
+        if self.controls.get("Forward").unwrap().state {
             self.move_car(self.focused_car[0], self.focused_car[1], 0.1, 0.);
         }
-        if self.controls[1].state {
+        if self.controls.get("Backward").unwrap().state {
             self.move_car(self.focused_car[0], self.focused_car[1], -0.1, 0.);
         }
-        if self.controls[2].state {
+        if self.controls.get("Left").unwrap().state {
             self.move_car(self.focused_car[0], self.focused_car[1], 0., 0.1);
         }
-        if self.controls[3].state {
+        if self.controls.get("Right").unwrap().state {
             self.move_car(self.focused_car[0], self.focused_car[1], 0., -0.1);
         }
         
@@ -232,28 +252,21 @@ impl Content {
             queue.write_buffer(&self.cars_location_buffers[i], 0, bytemuck::cast_slice(&self.cars_gpu_locations[i]));
         }
         
-        self.view.position[0] = -self.cars_gpu_locations[self.focused_car[0]][self.focused_car[1]].position[0] + 0.99*(self.view.position[0]+self.cars_gpu_locations[self.focused_car[0]][self.focused_car[1]].position[0]); // TODO: replace many [f32; 2]'s with Vector2 class!
-        self.view.position[1] = -self.cars_gpu_locations[self.focused_car[0]][self.focused_car[1]].position[1] + 0.99*(self.view.position[1]+self.cars_gpu_locations[self.focused_car[0]][self.focused_car[1]].position[1]); // TODO: fix the camera position being inverted!
+        let target_position: Vector2 = self.cars_displacements[self.focused_car[0]][self.focused_car[1]].position;
+        self.displacement.position.onward(0.02 * target_position.distance(self.displacement.position), target_position.angle_to(self.displacement.position));
         
-        // For the Vector2 class:
-        // * .rotate(f32) will rotate the vector by that amount of radians.
-        // * .forward(f32) will move the vector forward by the amount specified.
-        // * .face(Vector2) will face the vector towards the Vector2 position defined.
-        // * .distance(Vector2) will return the distance in f32 to the Vector2.
-        // * .magnitude() will return the magnitude of the vector.
-        // * .angle() will return the angle of the vector.
-        // 
-        // Additionally, implement addition, subtraction, multiplication, and division
+        self.gpu_view.position[0] = self.displacement.position.x;
+        self.gpu_view.position[1] = self.displacement.position.y;
     }
     
     pub fn render_objects(&mut self, queue: &mut wgpu::Queue, renderpass: &mut wgpu::RenderPass) {
         renderpass.set_viewport(self.window[0], self.window[1], self.window[2], self.window[3], 0., 1.);
         
-        self.view.time[0] = chrono::Utc::now().signed_duration_since(self.init_time).as_seconds_f32();
-        self.view.time[1] = chrono::Utc::now().signed_duration_since(self.last_time).as_seconds_f32();
-        queue.write_buffer(&self.view_buffer, 0, bytemuck::bytes_of(&[self.view]));
+        self.gpu_view.time[0] = chrono::Utc::now().signed_duration_since(self.init_time).as_seconds_f32();
+        self.gpu_view.time[1] = chrono::Utc::now().signed_duration_since(self.last_time).as_seconds_f32();
+        queue.write_buffer(&self.gpu_view_buffer, 0, bytemuck::bytes_of(&[self.gpu_view]));
         
-        renderpass.set_bind_group(0, &self.view_bind_group, &[]);
+        renderpass.set_bind_group(0, &self.gpu_view_bind_group, &[]);
         renderpass.set_vertex_buffer(0, self.current_map_vertex_buffer.slice(..));
         renderpass.set_vertex_buffer(1, self.current_map_location_buffer.slice(..));
         renderpass.set_index_buffer(self.current_map_index_buffer.slice(..), wgpu::IndexFormat::Uint32);

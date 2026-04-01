@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub, Mul, Div, Neg, AddAssign, SubAssign, MulAssign, DivAssign};
+use std::{ops::{Add, Sub, Mul, Div, Neg, AddAssign, SubAssign, MulAssign, DivAssign}};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vector2 {
@@ -202,8 +202,12 @@ impl Vector2 {
         self.y.atan2(self.x)
     }
     
+    pub fn angle_to(&self, other: Vector2) -> f32 {
+        (*self-other).angle()
+    }
+    
     pub fn distance(&self, other: Self) -> f32 {
-        other.x.hypot(other.y) - self.x.hypot(self.y)
+        (other.x-self.x).hypot(other.y-self.y).abs()
     }
     
     pub fn normalized(self) -> Self {

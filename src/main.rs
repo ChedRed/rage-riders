@@ -42,7 +42,7 @@ impl State {
 
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Layout for Primary Render Pipeline"),
-            bind_group_layouts: &[&content.view_bind_layout],
+            bind_group_layouts: &[&content.gpu_view_bind_layout],
             immediate_size: 0,
         });
 
@@ -131,13 +131,13 @@ impl State {
     
     fn keyboard_inputs(&mut self, code: winit::keyboard::KeyCode, state: bool) {
         if code == winit::keyboard::KeyCode::KeyW {
-            self.content.controls[0].state = state;
+            self.content.controls.get_mut("Forward").unwrap().state = state;
         } else if code == winit::keyboard::KeyCode::KeyS {
-            self.content.controls[1].state = state;
+            self.content.controls.get_mut("Backward").unwrap().state = state;
         } else if code == winit::keyboard::KeyCode::KeyA {
-            self.content.controls[2].state = state;
+            self.content.controls.get_mut("Left").unwrap().state = state;
         } else if code == winit::keyboard::KeyCode::KeyD {
-            self.content.controls[3].state = state;
+            self.content.controls.get_mut("Right").unwrap().state = state;
         }
     }
 

@@ -44,7 +44,7 @@ fn vs_main(
     var prepos: vec2<f32> = rotate(model.center, model.position, model.rotation.x);
     prepos = rotate(-view.position, prepos, view.rotation.x);
     
-    var pos: vec2<f32> = prepos + model.offset + view.position;
+    var pos: vec2<f32> = prepos + model.offset - view.position;
     pos *= 0.05;
     // pos *= view.scale;
     out.clip_position = vec4<f32>(pos, 0.0, 1.0);
