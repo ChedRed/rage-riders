@@ -10,9 +10,9 @@ use winit::window::{Window, WindowId};
 pub mod utils;
 use utils::gpu::{Vertex, Location};
 
-use crate::content::Content;
-
 pub mod content;
+use content::Content;
+
 
 struct State {
     surface: wgpu::Surface<'static>,
